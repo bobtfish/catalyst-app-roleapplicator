@@ -9,7 +9,7 @@ use namespace::clean -except => 'meta';
 
 Moose::Exporter->setup_import_methods;
 
-my @attributes = map {
+our @attributes = map {
     [ $_, "${_}_class", "${_}_roles" ]
 } qw/
     dispatcher
@@ -21,17 +21,22 @@ my @attributes = map {
 /;
 
 sub init_meta {
-    my ($class, %opts) = @_;
+    shift;
+    my (%opts) = @_;
 
     my $caller = $opts{for_class};
+
+    Moose::Util::MetaRole::apply_metaclass_roles(
+          for_class               => $caller,
+          metaclass_roles         => ['Catalyst::App::RoleApplicator::Meta::Class'],
+    );
 
     my $meta = find_meta($caller);
     confess 'oh noes' unless $meta;
 
-    $caller->mk_classdata(map { $_->[2] } @attributes);
-
     $meta->add_after_method_modifier(setup_finalize => sub {
         my ($app) = @_;
+        my $meta = find_meta($app);
         for my $attr (@attributes) {
             my $roles = $app->${ \$attr->[2] };
             next unless $roles;
@@ -41,7 +46,7 @@ sub init_meta {
                     $_ = $app->_transform_role_name($attr->[0], $_)
                 } @{ $roles };
 
-            my $superclass = $app->${ \$attr->[1] };
+            my $superclass = $meta->${ \$attr->[1] };
 
             # hack: context_class doesn't have a default until the
             #       first request
